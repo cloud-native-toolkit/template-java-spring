@@ -76,3 +76,14 @@ test {
 testlogger {
     theme 'mocha'
 }
+
+task copyJarToServerJar(type: Copy) {
+    from ('build/libs') {
+        rename "${project.name}-${project.version}.jar", 'server.jar'
+    }
+    into 'build/libs'
+}
+
+task run {
+    dependsOn 'bootRun'
+}
