@@ -160,13 +160,6 @@ spec:
                   exit 0
                 fi
 
-                if [[ $(./gradlew tasks --all | grep -Eq "^sonarqube") ]]; then
-                    echo "SonarQube task found"
-                else
-                    echo "Skipping SonarQube step, no task defined"
-                    exit 0
-                fi
-
                 ./gradlew -Dsonar.login=${SONARQUBE_USER} -Dsonar.password=${SONARQUBE_PASSWORD} -Dsonar.host.url=${SONARQUBE_URL} sonarqube
                 '''
             }
