@@ -57,10 +57,11 @@ dependencies {
     implementation group: 'javax.xml.bind', name: 'jaxb-api', version: '2.1'
     implementation group: 'joda-time', name: 'joda-time', version: '2.10.3'
  
-	// pact
-	testImplementation group: 'au.com.dius', name: 'pact-jvm-provider-junit5', version: project.pactVersion
-    // testImplementation("au.com.dius:pact-jvm-consumer-java8_2.12:${pactVersion}")
-	testImplementation group: 'au.com.dius', name: 'pact-jvm-provider', version: project.pactVersion
+    // pact
+    testImplementation group: 'au.com.dius', name: 'pact-jvm-provider-junit5', version: project.pactVersion
+    testImplementation group: 'au.com.dius', name: 'pact-jvm-provider', version: project.pactVersion
+    testImplementation group: 'au.com.dius', name: 'pact-jvm-consumer-junit5', version: project.pactVersion
+    testImplementation group: 'au.com.dius', name: 'pact-jvm-consumer', version: project.pactVersion
 
     // swagger
     implementation group: 'io.springfox', name: 'springfox-swagger2', version: "${swaggerVersion}"
