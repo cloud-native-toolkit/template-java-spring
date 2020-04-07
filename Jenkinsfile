@@ -358,10 +358,14 @@ spec:
                     . ./env-config
 
                     if [[ "${CLUSTER_TYPE}" == "openshift" ]]; then
-                        ROUTE_HOST=$(kubectl get route/${IMAGE_NAME} --namespace ${ENVIRONMENT_NAME} --output=jsonpath='{ .spec.host }')
+                        PROTOCOL="https"
+                        HOST=$(kubectl get route/${IMAGE_NAME} --namespace ${ENVIRONMENT_NAME} --output=jsonpath='{ .spec.host }')
+                        PORT="443"
                         URL="https://${ROUTE_HOST}"
                     else
-                        INGRESS_HOST=$(kubectl get ingress/${IMAGE_NAME} --namespace ${ENVIRONMENT_NAME} --output=jsonpath='{ .spec.rules[0].host }')
+                        PROTOCOL="http"
+                        HOST=$(kubectl get ingress/${IMAGE_NAME} --namespace ${ENVIRONMENT_NAME} --output=jsonpath='{ .spec.rules[0].host }')
+                        PORT="80"
                         URL="http://${INGRESS_HOST}"
                     fi
 
