@@ -13,8 +13,8 @@
 def buildAgentName(String jobNameWithNamespace, String buildNumber, String namespace) {
     def jobName = removeNamespaceFromJobName(jobNameWithNamespace, namespace);
 
-    if (jobName.length() > 55) {
-        jobName = jobName.substring(0, 55);
+    if (jobName.length() > 52) {
+        jobName = jobName.substring(0, 52);
     }
 
     return "a.${jobName}${buildNumber}".replace('_', '-').replace('/', '-').replace('-.', '.');
@@ -45,6 +45,9 @@ apiVersion: v1
 kind: Pod
 spec:
   serviceAccountName: jenkins
+  volumes:
+    - emptyDir: {}
+      name: varlibcontainers
   containers:
     - name: jdk11
       image: jenkins/slave:latest-jdk11
@@ -89,15 +92,61 @@ spec:
         - name: GIT_AUTH_USER
           valueFrom:
             secretKeyRef:
-              name: ${secretName}
+              name: git-credentials
               key: username
+              optional: true
         - name: GIT_AUTH_PWD
           valueFrom:
             secretKeyRef:
-              name: ${secretName}
+              name: git-credentials
               key: password
+              optional: true
+    - name: buildah
+      image: quay.io/buildah/stable:v1.9.2
+      tty: true
+      command: ["/bin/bash"]
+      workingDir: ${workingDir}
+      securityContext:
+        privileged: true
+      envFrom:
+        - configMapRef:
+            name: ibmcloud-config
+        - secretRef:
+            name: ibmcloud-apikey
+      env:
+        - name: HOME
+          value: /home/devops
+        - name: ENVIRONMENT_NAME
+          value: ${env.NAMESPACE}
+        - name: DOCKERFILE
+          value: ./Dockerfile
+        - name: CONTEXT
+          value: .
+        - name: TLSVERIFY
+          value: "false"
+        - name: REGISTRY_USER
+          valueFrom:
+            secretKeyRef:
+              key: REGISTRY_USER
+              name: ibmcloud-apikey
+              optional: true
+        - name: REGISTRY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: REGISTRY_PASSWORD
+              name: ibmcloud-apikey
+              optional: true
+        - name: APIKEY
+          valueFrom:
+            secretKeyRef:
+              key: APIKEY
+              name: ibmcloud-apikey
+              optional: true
+      volumeMounts:
+        - mountPath: /var/lib/containers
+          name: varlibcontainers
     - name: ibmcloud
-      image: docker.io/garagecatalyst/ibmcloud-dev:1.0.8
+      image: docker.io/garagecatalyst/ibmcloud-dev:1.0.10
       tty: true
       command: ["/bin/bash"]
       workingDir: ${workingDir}
@@ -134,14 +183,24 @@ spec:
         - name: HOME
           value: /home/devops
       envFrom:
+        - configMapRef:
+            name: gitops-repo
+            optional: true
         - secretRef:
-            name: gitops-cd-secret
+            name: git-credentials
             optional: true
 """
 ) {
     node(buildLabel) {
         container(name: 'jdk11', shell: '/bin/bash') {
             checkout scm
+            stage('Setup') {
+                sh '''
+                    echo "IMAGE_NAME=$(basename -s .git `git config --get remote.origin.url` | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')" > ./env-config
+
+                    chmod a+rw ./env-config
+                '''
+            }
             stage('Build') {
                 sh '''
                     ./gradlew assemble --no-daemon
@@ -160,7 +219,19 @@ spec:
                   exit 0
                 fi
 
-                ./gradlew -Dsonar.login=${SONARQUBE_USER} -Dsonar.password=${SONARQUBE_PASSWORD} -Dsonar.host.url=${SONARQUBE_URL} sonarqube
+                if ./gradlew tasks --all | grep -Eq "^sonarqube"; then
+                    echo "SonarQube task found"
+                else
+                    echo "Skipping SonarQube step, no task defined"
+                    exit 0
+                fi
+
+                ./gradlew \
+                  -Dsonar.login=${SONARQUBE_USER} \
+                  -Dsonar.password=${SONARQUBE_PASSWORD} \
+                  -Dsonar.host.url=${SONARQUBE_URL} \
+                  -Psonar.projectName=${IMAGE_NAME} \
+                  sonarqube
                 '''
             }
         }
@@ -190,26 +261,40 @@ spec:
                     release-it patch ${PRE_RELEASE} \
                       --ci \
                       --no-npm \
+                      --no-git.requireCleanWorkingDir \
                       --verbose \
                       -VV
 
-                    echo "IMAGE_VERSION=$(git describe --abbrev=0 --tags)" > ./env-config
-                    echo "IMAGE_NAME=$(basename -s .git `git config --get remote.origin.url` | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')" >> ./env-config
+                    echo "IMAGE_VERSION=$(git describe --abbrev=0 --tags)" >> ./env-config
 
                     cat ./env-config
                 '''
             }
         }
-        container(name: 'ibmcloud', shell: '/bin/bash') {
+        container(name: 'buildah', shell: '/bin/bash') {
             stage('Build image') {
                 sh '''#!/bin/bash
+                    set -e
                     . ./env-config
 
-                    echo -e "=========================================================================================="
-                    echo -e "BUILDING CONTAINER IMAGE: ${REGISTRY_URL}/${REGISTRY_NAMESPACE}/${IMAGE_NAME}:${IMAGE_VERSION}"
-                    ibmcloud cr build -t ${REGISTRY_URL}/${REGISTRY_NAMESPACE}/${IMAGE_NAME}:${IMAGE_VERSION} .
+		            echo TLSVERIFY=${TLSVERIFY}
+		            echo CONTEXT=${CONTEXT}
+
+		            if [[ -z "${REGISTRY_PASSWORD}" ]]; then
+		              REGISTRY_PASSWORD="${APIKEY}"
+		            fi
+
+                    APP_IMAGE="${REGISTRY_URL}/${REGISTRY_NAMESPACE}/${IMAGE_NAME}:${IMAGE_VERSION}"
+
+                    buildah bud --tls-verify=${TLSVERIFY} --format=docker -f ${DOCKERFILE} -t ${APP_IMAGE} ${CONTEXT}
+                    if [[ -n "${REGISTRY_USER}" ]] && [[ -n "${REGISTRY_PASSWORD}" ]]; then
+                        buildah login -u "${REGISTRY_USER}" -p "${REGISTRY_PASSWORD}" "${REGISTRY_URL}"
+                    fi
+                    buildah push --tls-verify=${TLSVERIFY} "${APP_IMAGE}" "docker://${APP_IMAGE}"
                 '''
             }
+        }
+        container(name: 'ibmcloud', shell: '/bin/bash') {
             stage('Deploy to DEV env') {
                 sh '''#!/bin/bash
                     . ./env-config
@@ -293,6 +378,28 @@ spec:
 
                 '''
             }
+        }
+        container(name: 'jdk11', shell: '/bin/bash') {
+            stage('Pact verify') {
+                sh '''#!/bin/bash
+                    if [[ -z "${PACTBROKER_URL}" ]]; then
+                      echo "PactBroker url not set. Skipping pact verification"
+                      exit 0
+                    fi
+
+                    set -x
+                    . ./env-config
+
+                    ./gradlew pactVerify \
+                      -PpactBrokerUrl=${PACTBROKER_URL} \
+                      -PpactProtocol=${PROTOCOL} \
+                      -PpactHost=${HOST} \
+                      -PpactPort=${PORT} \
+                      -Ppact.verifier.publishResults=true
+                '''
+            }
+        }
+        container(name: 'ibmcloud', shell: '/bin/bash') {
             stage('Package Helm Chart') {
                 sh '''#!/bin/bash
 
