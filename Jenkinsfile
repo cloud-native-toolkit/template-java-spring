@@ -361,13 +361,17 @@ spec:
                         PROTOCOL="https"
                         HOST=$(kubectl get route/${IMAGE_NAME} --namespace ${ENVIRONMENT_NAME} --output=jsonpath='{ .spec.host }')
                         PORT="443"
-                        URL="https://${ROUTE_HOST}"
                     else
                         PROTOCOL="http"
                         HOST=$(kubectl get ingress/${IMAGE_NAME} --namespace ${ENVIRONMENT_NAME} --output=jsonpath='{ .spec.rules[0].host }')
                         PORT="80"
-                        URL="http://${INGRESS_HOST}"
                     fi
+
+                    echo "PROTOCOL=${PROTOCOL}" >> ./env-config
+                    echo "HOST=${HOST}" >> ./env-config
+                    echo "PORT=${PORT}" >> ./env-config
+
+                    URL="${PROTOCOL}://${HOST}"
 
                     # sleep for 10 seconds to allow enough time for the server to start
                     sleep 30
