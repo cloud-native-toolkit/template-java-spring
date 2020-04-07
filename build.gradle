@@ -89,11 +89,11 @@ task run {
     dependsOn 'bootRun'
 }
 
-def pactBrokerUrl = project.hasProperty('pactBrokerUrl') ? 'http://localhost'
-def providerName = project.hasProperty('pactProvider') ? project.getProperty('pactProvider') : project.name
-def pactProtocol = project.hasProperty('pactProtocol') ? project.getProperty('pactProtocol') : 'http'
-def pactHost = project.hasProperty('pactHost') ? project.getProperty('pactHost') : 'localhost'
-def pactPort = project.hasProperty('pactPort') ? project.getProperty('pactPort') : '8080'
+def pactBrokerUrl = project.hasProperty('pactBrokerUrl') ? pactBrokerUrl : 'http://localhost'
+def providerName = project.hasProperty('pactProvider') ? pactProvider : project.name
+def pactProtocol = project.hasProperty('pactProtocol') ? pactProtocol : 'http'
+def pactHost = project.hasProperty('pactHost') ? pactHost : 'localhost'
+def pactPort = project.hasProperty('pactPort') ? pactPort : '8080'
 pact {
     serviceProviders {
         // You can define as many as you need, but each must have a unique name
