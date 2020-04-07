@@ -390,6 +390,13 @@ spec:
                     set -x
                     . ./env-config
 
+                    if ./gradlew tasks --all | grep -Eq "^pactVerify"; then
+                        echo "Pact Verify task found"
+                    else
+                        echo "Skipping Pact Verify step, no task defined"
+                        exit 0
+                    fi
+
                     ./gradlew pactVerify \
                       -PpactBrokerUrl=${PACTBROKER_URL} \
                       -PpactProtocol=${PROTOCOL} \
