@@ -88,3 +88,25 @@ task copyJarToServerJar(type: Copy) {
 task run {
     dependsOn 'bootRun'
 }
+
+def pactBrokerUrl = project.hasProperty('pactBrokerUrl') ? 'http://localhost'
+def providerName = project.hasProperty('pactProvider') ? project.getProperty('pactProvider') : project.name
+def pactProtocol = project.hasProperty('pactProtocol') ? project.getProperty('pactProtocol') : 'http'
+def pactHost = project.hasProperty('pactHost') ? project.getProperty('pactHost') : 'localhost'
+def pactPort = project.hasProperty('pactPort') ? project.getProperty('pactPort') : '8080'
+pact {
+    serviceProviders {
+        // You can define as many as you need, but each must have a unique name
+        "${providerName}" {
+            // All the provider properties are optional, and have sensible defaults (shown below)
+            protocol = pactProtocol
+            host = pactHost
+            port = pactPort
+            path = '/'
+
+            if ('pactVerify' in gradle.startParameter.taskNames) {
+                hasPactsFromPactBroker(pactBrokerUrl)
+            }
+        }
+    }
+}
